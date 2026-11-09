@@ -1,0 +1,328 @@
+<!doctype html>
+<html><head><meta charset="utf-8"><style>html,body{margin:0;background:#000}canvas{display:block}</style></head>
+<body><canvas id="c" width="1080" height="1920"></canvas>
+<script>
+// GKCAR 7s vertical animation. Malaysian RHD car: driver RIGHT, passenger LEFT FRONT seat.
+// No text, no logos. render(t) is deterministic for frame capture.
+const C = document.getElementById('c'), X = C.getContext('2d');
+const W = 1080, H = 1920, GY = 1565;            // GY = road contact line of the car
+const GREEN = '#0B8F3A', GREEN2 = '#13A84A', SKIN = '#B9825A', SKIN2 = '#8E5E3E';
+const clamp = (v, a = 0, b = 1) => Math.max(a, Math.min(b, v));
+const seg = (t, a, b) => clamp((t - a) / (b - a));
+const eio = p => p < .5 ? 4*p*p*p : 1 - Math.pow(-2*p + 2, 3) / 2;
+const eo = p => 1 - Math.pow(1 - p, 3);
+const ei = p => p * p;
+const lerp = (a, b, p) => a + (b - a) * p;
+function rr(x, y, w, h, r) { X.beginPath(); X.roundRect(x, y, w, h, r); }
+
+// ---------------- background (side view, Sandakan seafront) ----------------
+function background() {
+  let g = X.createLinearGradient(0, 0, 0, 800);
+  g.addColorStop(0, '#6FA7D6'); g.addColorStop(.6, '#F3C98B'); g.addColorStop(1, '#F7D9A8');
+  X.fillStyle = g; X.fillRect(0, 0, W, 800);
+  // sun glow
+  g = X.createRadialGradient(820, 640, 10, 820, 640, 420);
+  g.addColorStop(0, 'rgba(255,240,200,.95)'); g.addColorStop(.15, 'rgba(255,220,150,.6)'); g.addColorStop(1, 'rgba(255,200,120,0)');
+  X.fillStyle = g; X.fillRect(0, 0, W, 1100);
+  // distant hills / islands
+  X.fillStyle = '#5E8A6A';
+  X.beginPath(); X.moveTo(0, 790); X.bezierCurveTo(150, 640, 330, 700, 460, 760); X.bezierCurveTo(560, 720, 640, 740, 700, 790); X.lineTo(0, 800); X.fill();
+  X.fillStyle = '#7FA083';
+  X.beginPath(); X.moveTo(620, 795); X.bezierCurveTo(760, 735, 920, 745, 1080, 770); X.lineTo(1080, 800); X.fill();
+  // sea
+  g = X.createLinearGradient(0, 790, 0, 1090);
+  g.addColorStop(0, '#9FC4C9'); g.addColorStop(1, '#2E7F8C');
+  X.fillStyle = g; X.fillRect(0, 790, W, 300);
+  X.strokeStyle = 'rgba(255,240,210,.55)'; X.lineWidth = 3;
+  for (let i = 0; i < 26; i++) { const y = 810 + i * 11, x = (i * 173) % 900 + 60; X.beginPath(); X.moveTo(x, y); X.lineTo(x + 40 + (i % 3) * 20, y); X.stroke(); }
+  // water village on stilts
+  for (let i = 0; i < 4; i++) {
+    const x = 90 + i * 70, y = 900 - i * 6;
+    X.fillStyle = '#6B4B33'; for (let s = 0; s < 4; s++) X.fillRect(x + s * 16, y + 34, 4, 40);
+    X.fillStyle = '#C9A57A'; X.fillRect(x - 4, y, 64, 36);
+    X.fillStyle = '#8C3B2E'; X.beginPath(); X.moveTo(x - 10, y); X.lineTo(x + 28, y - 26); X.lineTo(x + 66, y); X.fill();
+  }
+  // promenade wall + railing
+  X.fillStyle = '#C8C1B4'; X.fillRect(0, 1088, W, 50);
+  X.fillStyle = '#A9A194'; X.fillRect(0, 1132, W, 8);
+  X.strokeStyle = '#EDEBE6'; X.lineWidth = 6;
+  X.beginPath(); X.moveTo(0, 1040); X.lineTo(W, 1040); X.stroke();
+  for (let x = 10; x < W; x += 60) { X.beginPath(); X.moveTo(x, 1040); X.lineTo(x, 1090); X.stroke(); }
+  // palms
+  [[140, 1.0], [560, .9], [960, 1.05]].forEach(([x, s]) => palm(x, 1095, s));
+  // road
+  g = X.createLinearGradient(0, 1140, 0, 1610);
+  g.addColorStop(0, '#5A5E63'); g.addColorStop(1, '#3E4246');
+  X.fillStyle = g; X.fillRect(0, 1140, W, 470);
+  X.fillStyle = '#E9E4D8';
+  for (let x = -40; x < W; x += 200) X.fillRect(x, 1355, 110, 10);
+  // curb + sidewalk
+  X.fillStyle = '#D9D4C9'; X.fillRect(0, 1606, W, 22);
+  X.fillStyle = GREEN; for (let x = 0; x < W; x += 80) X.fillRect(x, 1606, 40, 22); // curb paint
+  X.fillStyle = '#C9B8A0'; X.fillRect(0, 1628, W, 292);
+  X.strokeStyle = 'rgba(120,100,80,.35)'; X.lineWidth = 2;
+  for (let y = 1680; y < H; y += 70) { X.beginPath(); X.moveTo(0, y); X.lineTo(W, y); X.stroke(); }
+  for (let x = 0; x < W; x += 110) { X.beginPath(); X.moveTo(x, 1628); X.lineTo(x - 60, H); X.stroke(); }
+}
+function palm(x, y, s) {
+  X.save(); X.translate(x, y); X.scale(s, s);
+  X.strokeStyle = '#7A5A3A'; X.lineWidth = 16; X.lineCap = 'round';
+  X.beginPath(); X.moveTo(0, 0); X.quadraticCurveTo(-20, -180, 15, -360); X.stroke();
+  X.fillStyle = '#2F6B3A';
+  for (let i = 0; i < 7; i++) {
+    const a = -Math.PI / 2 + (i - 3) * .55;
+    X.save(); X.translate(15, -360); X.rotate(a);
+    X.beginPath(); X.moveTo(0, 0); X.quadraticCurveTo(80, -30, 170, 40); X.quadraticCurveTo(80, 0, 0, 12); X.fill();
+    X.restore();
+  }
+  X.restore();
+}
+
+// ---------------- people ----------------
+// side-view person, foot = ground y, dir = facing (+1 right, -1 left)
+function person(x, foot, o) {
+  const s = o.s || 1, hip = foot - 150 * s, sh = hip - 140 * s, hr = 34 * s, hy = sh - hr - 4 * s;
+  const sw = Math.sin(o.walk || 0) * .38, dir = o.dir || 1;
+  X.save(); X.lineCap = 'round';
+  // legs
+  [sw, -sw].forEach((a, i) => {
+    X.save(); X.translate(x + (i ? -8 : 8) * s, hip); X.rotate(a);
+    X.fillStyle = o.pants; rr(-14 * s, 0, 28 * s, 140 * s, 12 * s); X.fill();
+    X.fillStyle = '#1C1C1C'; rr(-14 * s + dir * 4, 132 * s, 34 * s, 14 * s, 6); X.fill();
+    X.restore();
+  });
+  // back arm
+  arm(x - dir * 6 * s, sh + 16 * s, -sw * .8, s, o.top, o);
+  // torso
+  X.fillStyle = o.top; rr(x - 36 * s, sh, 72 * s, 150 * s, 26 * s); X.fill();
+  if (o.collar) { X.fillStyle = o.collar; rr(x - 22 * s, sh, 44 * s, 14 * s, 6); X.fill(); }
+  // head
+  if (o.hijab) {
+    X.fillStyle = o.hijab;
+    X.beginPath(); X.ellipse(x - dir * 4 * s, hy, hr * 1.25, hr * 1.3, 0, 0, Math.PI * 2); X.fill();
+    X.beginPath(); X.moveTo(x - 42 * s, sh + 30 * s); X.quadraticCurveTo(x, hy + 10 * s, x + 42 * s, sh + 30 * s); X.lineTo(x + 30 * s, sh - 6 * s); X.lineTo(x - 30 * s, sh - 6 * s); X.fill();
+    X.fillStyle = SKIN; X.beginPath(); X.ellipse(x + dir * 12 * s, hy + 4 * s, hr * .66, hr * .82, 0, 0, Math.PI * 2); X.fill();
+  } else {
+    X.fillStyle = SKIN; X.fillRect(x - 10 * s, sh - 12 * s, 20 * s, 16 * s);
+    X.beginPath(); X.arc(x, hy, hr, 0, Math.PI * 2); X.fill();
+    X.fillStyle = '#151515'; X.beginPath(); X.arc(x - dir * 4 * s, hy - 6 * s, hr * 1.02, Math.PI * .95, Math.PI * 2.05); X.fill();
+  }
+  // face hint (eye + smile)
+  X.fillStyle = '#2A1A10'; X.beginPath(); X.arc(x + dir * 20 * s, hy, 3 * s, 0, 7); X.fill();
+  X.strokeStyle = '#6B3A25'; X.lineWidth = 2.5 * s; X.beginPath(); X.arc(x + dir * 18 * s, hy + 12 * s, 7 * s, .2, Math.PI * .7); X.stroke();
+  // front arm (+wave / phone)
+  if (o.wave) arm(x + dir * 6 * s, sh + 16 * s, -dir * (2.4 + Math.sin(o.wave) * .35), s, o.top, o, true);
+  else arm(x + dir * 6 * s, sh + 16 * s, sw * .8, s, o.top, o);
+  if (o.bag) { X.fillStyle = '#3B2A20'; rr(x - dir * 40 * s, hip - 30 * s, 34 * s, 40 * s, 6); X.fill(); }
+  X.restore();
+}
+function arm(x, y, a, s, col) {
+  X.save(); X.translate(x, y); X.rotate(a);
+  X.fillStyle = col; rr(-13 * s, 0, 26 * s, 70 * s, 12 * s); X.fill();
+  X.fillStyle = SKIN; rr(-10 * s, 64 * s, 20 * s, 56 * s, 10 * s); X.fill();
+  X.restore();
+}
+const PASSENGER = { top: '#34A866', pants: '#1E1E22', hijab: '#5FA88A', bag: false, dir: 1, s: .85 };
+const DRIVER = { top: GREEN, pants: '#2B2B33', collar: '#0A6E2C', dir: 1 };
+
+// ---------------- side-view car (facing right) ----------------
+// rel coords: x right, y up negative from GY
+const BODY = [[-380,-48],[-386,-150],[-330,-172],[-262,-182],[-192,-292],[112,-292],[232,-186],[362,-160],[388,-118],[384,-48]];
+const RWIN = [[-246,-188],[-182,-278],[-22,-278],[-22,-188]];
+const FWIN = [[-4,-188],[-4,-278],[104,-278],[210,-188]];
+const DOOR = { x0: -8, x1: 216, top: -286, bot: -52 };
+function poly(cx, pts) { X.beginPath(); pts.forEach(([x, y], i) => i ? X.lineTo(cx + x, GY + y) : X.moveTo(cx + x, GY + y)); X.closePath(); }
+
+function car(cx, o) {
+  // shadow
+  X.fillStyle = 'rgba(0,0,0,.28)'; X.beginPath(); X.ellipse(cx, GY + 4, 420, 22, 0, 0, 7); X.fill();
+  // body
+  let g = X.createLinearGradient(0, GY - 300, 0, GY);
+  g.addColorStop(0, '#F4F6F7'); g.addColorStop(.55, '#D9DEE2'); g.addColorStop(1, '#AEB4B9');
+  X.fillStyle = g; poly(cx, BODY); X.fill();
+  X.strokeStyle = 'rgba(60,70,80,.5)'; X.lineWidth = 3; X.stroke();
+  // green brand stripe (no text)
+  X.fillStyle = GREEN; X.fillRect(cx - 382, GY - 118, 766, 16);
+  X.fillStyle = GREEN2; X.fillRect(cx - 382, GY - 100, 766, 5);
+  // roof sign: white box with green band, no lettering
+  X.fillStyle = '#FAFAFA'; rr(cx - 90, GY - 340, 180, 46, 10); X.fill();
+  X.fillStyle = GREEN; rr(cx - 90, GY - 318, 180, 16, 4); X.fill();
+  X.fillStyle = '#555'; X.fillRect(cx - 60, GY - 296, 120, 6);
+  // interior (windows + open door gap), clipped
+  const open = o.doorOpen || 0;
+  X.save();
+  X.beginPath();
+  RWIN.forEach(([x, y], i) => i ? X.lineTo(cx + x, GY + y) : X.moveTo(cx + x, GY + y)); X.closePath();
+  FWIN.forEach(([x, y], i) => i ? X.lineTo(cx + x, GY + y) : X.moveTo(cx + x, GY + y)); X.closePath();
+  if (open > 0) X.rect(cx + DOOR.x0, GY + DOOR.top + 6, DOOR.x1 - DOOR.x0, DOOR.bot - DOOR.top - 6);
+  X.clip();
+  X.fillStyle = '#26323A'; X.fillRect(cx - 400, GY - 300, 800, 260);
+  // seats
+  X.fillStyle = '#3E4A52'; rr(cx - 150, GY - 250, 110, 200, 20); X.fill();      // rear bench (empty)
+  X.fillStyle = '#4A5660'; rr(cx + 6, GY - 262, 46, 190, 16); X.fill();         // front seat back
+  X.fillStyle = '#3A464E'; rr(cx + 10, GY - 120, 150, 50, 12); X.fill();        // seat base
+  // driver (far / right side of car)
+  X.save(); X.globalAlpha = .9;
+  X.fillStyle = DRIVER.top; rr(cx + 96, GY - 196, 66, 120, 22); X.fill();
+  X.fillStyle = SKIN2; X.beginPath(); X.arc(cx + 132, GY - 228, 30, 0, 7); X.fill();
+  X.fillStyle = '#111'; X.beginPath(); X.arc(cx + 128, GY - 234, 31, Math.PI * .95, Math.PI * 2.05); X.fill();
+  X.fillStyle = '#1A1A1A'; X.beginPath(); X.arc(cx + 152, GY - 228, 3, 0, 7); X.fill();
+  X.restore();
+  X.strokeStyle = '#111'; X.lineWidth = 8; X.beginPath(); X.ellipse(cx + 180, GY - 196, 12, 34, -.35, 0, 7); X.stroke(); // steering wheel
+  if (o.inside) o.inside();
+  X.restore();
+  // window glare
+  X.save(); X.globalAlpha = .18; X.fillStyle = '#fff';
+  X.beginPath(); X.moveTo(cx - 150, GY - 278); X.lineTo(cx - 100, GY - 278); X.lineTo(cx - 170, GY - 188); X.lineTo(cx - 220, GY - 188); X.fill();
+  X.beginPath(); X.moveTo(cx + 40, GY - 278); X.lineTo(cx + 70, GY - 278); X.lineTo(cx + 10, GY - 188); X.lineTo(cx - 4, GY - 188); X.lineTo(cx - 4, GY - 220); X.fill();
+  X.restore();
+  // pillars + door seams
+  X.fillStyle = '#2B3036'; X.fillRect(cx - 22, GY - 282, 18, 94);
+  X.strokeStyle = 'rgba(50,55,60,.6)'; X.lineWidth = 3;
+  X.beginPath(); X.moveTo(cx - 236, GY - 186); X.lineTo(cx - 236, GY - 52); X.stroke();
+  if (!open) { X.beginPath(); X.moveTo(cx + DOOR.x0, GY - 186); X.lineTo(cx + DOOR.x0, GY - 52); X.moveTo(cx + DOOR.x1, GY - 186); X.lineTo(cx + DOOR.x1 - 6, GY - 70); X.stroke(); }
+  // handles
+  X.fillStyle = '#9AA1A7'; rr(cx - 120, GY - 172, 40, 10, 5); X.fill();
+  if (!open) { X.fillStyle = '#9AA1A7'; rr(cx + 110, GY - 172, 40, 10, 5); X.fill(); }
+  // mirror
+  X.fillStyle = '#E9ECEE'; rr(cx + 200, GY - 214, 40, 28, 8); X.fill();
+  // lights
+  X.fillStyle = '#FFE9B0'; rr(cx + 356, GY - 152, 30, 18, 6); X.fill();
+  X.fillStyle = '#C0392B'; rr(cx - 388, GY - 150, 14, 26, 4); X.fill();
+  // wheels
+  [-240, 250].forEach(wx => wheel(cx + wx, GY - 62, o.spin || 0));
+  if (o.outside) o.outside();
+  // open front door (hinged at front edge, swinging toward camera)
+  if (open > 0) {
+    const w = (DOOR.x1 - DOOR.x0) * Math.cos(open * 1.25), x1 = cx + DOOR.x1 + 6 * open, x0 = x1 - w;
+    const grow = 14 * open;
+    g = X.createLinearGradient(x0, 0, x1, 0); g.addColorStop(0, '#C8CED3'); g.addColorStop(1, '#F2F4F5');
+    X.fillStyle = g;
+    X.beginPath(); X.moveTo(x1, GY + DOOR.top + 96); X.lineTo(x0, GY + DOOR.top + 96 - grow); X.lineTo(x0, GY + DOOR.bot + grow); X.lineTo(x1, GY + DOOR.bot); X.closePath(); X.fill();
+    X.strokeStyle = 'rgba(60,70,80,.6)'; X.lineWidth = 3; X.stroke();
+    X.fillStyle = GREEN; X.beginPath(); X.moveTo(x1, GY - 118); X.lineTo(x0, GY - 118 + grow * .2); X.lineTo(x0, GY - 102 + grow * .2); X.lineTo(x1, GY - 102); X.fill();
+    // window frame of door (glass, see-through)
+    X.strokeStyle = '#2B3036'; X.lineWidth = 6;
+    X.beginPath(); X.moveTo(x1, GY + DOOR.top + 96); X.lineTo(x0, GY + DOOR.top + 96 - grow); X.lineTo(x0, GY + DOOR.top - grow); X.lineTo(lerp(x0, x1, .55), GY + DOOR.top - grow * .5); X.stroke();
+  }
+}
+function wheel(x, y, a) {
+  X.fillStyle = '#1B1D20'; X.beginPath(); X.arc(x, y, 62, 0, 7); X.fill();
+  X.fillStyle = '#B8BEC4'; X.beginPath(); X.arc(x, y, 34, 0, 7); X.fill();
+  X.strokeStyle = '#7D848A'; X.lineWidth = 7;
+  for (let i = 0; i < 5; i++) { const b = a + i * Math.PI * 2 / 5; X.beginPath(); X.moveTo(x, y); X.lineTo(x + Math.cos(b) * 32, y + Math.sin(b) * 32); X.stroke(); }
+  X.fillStyle = '#5A6066'; X.beginPath(); X.arc(x, y, 9, 0, 7); X.fill();
+}
+
+// ---------------- top-down cutaway (proof of seating) ----------------
+function topView(t) {
+  const move = ei(seg(t, 4.75, 5.8)) * 520;
+  X.fillStyle = '#4A4E53'; X.fillRect(0, 0, W, H);
+  X.fillStyle = '#C9B8A0'; X.fillRect(0, 0, 150, H);                 // left kerb side (Malaysia: drive on left)
+  X.fillStyle = GREEN; for (let y = -120; y < H + 120; y += 120) X.fillRect(140, ((y + move) % (H + 240)) - 120, 18, 60);
+  X.fillStyle = '#E9E4D8'; for (let y = -200; y < H + 200; y += 240) X.fillRect(930, ((y + move * 1.0) % (H + 400)) - 200, 14, 120);
+  const cx = 540, top = 360;
+  X.save(); X.translate(0, -seg(t, 5.0, 5.8) * 30);
+  X.fillStyle = 'rgba(0,0,0,.35)'; rr(cx - 285, top + 30, 570, 1210, 120); X.fill();
+  // body
+  X.fillStyle = '#E3E7EA'; rr(cx - 270, top, 540, 1200, 130); X.fill();
+  X.fillStyle = GREEN; X.fillRect(cx - 270, top + 340, 16, 560); X.fillRect(cx + 254, top + 340, 16, 560);
+  // hood + windscreen
+  X.fillStyle = '#F2F4F5'; rr(cx - 230, top + 20, 460, 230, 90); X.fill();
+  X.fillStyle = '#3A5160'; X.beginPath(); X.moveTo(cx - 220, top + 330); X.lineTo(cx + 220, top + 330); X.lineTo(cx + 190, top + 250); X.lineTo(cx - 190, top + 250); X.fill();
+  X.fillStyle = '#FFE9B0'; rr(cx - 230, top + 14, 90, 22, 8); X.fill(); rr(cx + 140, top + 14, 90, 22, 8); X.fill();
+  // mirrors
+  X.fillStyle = '#E3E7EA'; rr(cx - 320, top + 330, 56, 34, 10); X.fill(); rr(cx + 264, top + 330, 56, 34, 10); X.fill();
+  // cabin floor
+  X.fillStyle = '#2C353C'; rr(cx - 240, top + 330, 480, 640, 40); X.fill();
+  // dashboard
+  X.fillStyle = '#1D2328'; rr(cx - 240, top + 330, 480, 70, 20); X.fill();
+  // rear bench (EMPTY)
+  X.fillStyle = '#56626B'; rr(cx - 220, top + 760, 440, 180, 30); X.fill();
+  X.fillStyle = '#4A555D'; rr(cx - 220, top + 900, 440, 50, 20); X.fill();
+  // front seats
+  [cx - 120, cx + 120].forEach(sx => { X.fillStyle = '#5E6A73'; rr(sx - 85, top + 470, 170, 200, 30); X.fill(); X.fillStyle = '#4A555D'; rr(sx - 90, top + 640, 180, 60, 22); X.fill(); });
+  // steering wheel on the RIGHT
+  X.strokeStyle = '#0E1114'; X.lineWidth = 16; X.beginPath(); X.ellipse(cx + 120, top + 425, 74, 22, 0, 0, 7); X.stroke();
+  // driver (right)
+  const look = Math.sin(seg(t, 4.35, 4.95) * Math.PI) * .45;
+  topPerson(cx + 120, top + 590, DRIVER.top, null, -look, true);
+  // passenger (left) + seatbelt
+  topPerson(cx - 120, top + 595, PASSENGER.top, PASSENGER.hijab, look, false);
+  const sb = eio(seg(t, 3.95, 4.35));
+  if (sb > 0) { X.strokeStyle = '#1A1A1A'; X.lineWidth = 12; X.beginPath(); X.moveTo(cx - 205, top + 540); X.lineTo(lerp(cx - 205, cx - 40, sb), lerp(top + 540, top + 660, sb)); X.stroke(); }
+  // rear window + trunk
+  X.fillStyle = '#3A5160'; X.beginPath(); X.moveTo(cx - 210, top + 975); X.lineTo(cx + 210, top + 975); X.lineTo(cx + 180, top + 1050); X.lineTo(cx - 180, top + 1050); X.fill();
+  X.fillStyle = '#C0392B'; rr(cx - 240, top + 1170, 80, 18, 6); X.fill(); rr(cx + 160, top + 1170, 80, 18, 6); X.fill();
+  X.restore();
+}
+function topPerson(x, y, top, hijab, turn, hands) {
+  X.fillStyle = top; X.beginPath(); X.ellipse(x, y, 82, 46, 0, 0, 7); X.fill();
+  X.strokeStyle = top; X.lineWidth = 26; X.lineCap = 'round';
+  if (hands) { X.beginPath(); X.moveTo(x - 66, y - 10); X.lineTo(x - 50, y - 160); X.moveTo(x + 66, y - 10); X.lineTo(x + 50, y - 160); X.stroke();
+    X.fillStyle = SKIN; X.beginPath(); X.arc(x - 50, y - 165, 14, 0, 7); X.arc(x + 50, y - 165, 14, 0, 7); X.fill(); }
+  else { X.beginPath(); X.moveTo(x - 66, y - 6); X.lineTo(x - 40, y + 70); X.moveTo(x + 66, y - 6); X.lineTo(x + 40, y + 70); X.stroke(); }
+  X.save(); X.translate(x, y - 10); X.rotate(turn);
+  if (hijab) { X.fillStyle = hijab; X.beginPath(); X.ellipse(0, 0, 52, 56, 0, 0, 7); X.fill(); X.fillStyle = SKIN; X.beginPath(); X.ellipse(0, -36, 22, 14, 0, 0, 7); X.fill(); }
+  else { X.fillStyle = '#121212'; X.beginPath(); X.arc(0, 0, 44, 0, 7); X.fill(); X.fillStyle = SKIN2; X.beginPath(); X.ellipse(0, -38, 18, 10, 0, 0, 7); X.fill(); }
+  X.restore();
+}
+
+// ---------------- timeline ----------------
+// 0.0-1.4 car arrives | 1.4-2.1 passenger walks to FRONT LEFT door | 1.9-2.4 door opens
+// 2.4-2.95 sits in front seat | 3.0-3.45 closes front door | 3.6-5.6 top-down: side by side, seatbelt, smile, start
+// 5.6-7.0 drives away
+function sideScene(t, after) {
+  const cx = !after ? lerp(-460, 470, eo(seg(t, 0, 1.4))) : lerp(470, 1750, ei(seg(t, 5.65, 6.9)));
+  const spin = (cx + 460) / 62;
+  const door = eio(seg(t, 1.9, 2.4)) * (1 - eio(seg(t, 3.0, 3.42)));
+  const walkP = seg(t, 1.45, 2.1), enterP = eio(seg(t, 2.4, 2.95));
+  let px = lerp(940, cx + 64, eio(walkP)), pf = lerp(1730, 1585, eio(walkP));
+  pf = lerp(pf, 1614, enterP);
+  const inside = after || t >= 2.95;
+  const pOpts = Object.assign({}, PASSENGER, {
+    walk: walkP > 0 && walkP < 1 ? walkP * 14 : 0,
+    wave: t > .55 && t < 1.45 ? t * 18 : 0,
+    dir: walkP > 0 || t > 1.4 ? -1 : -1,
+  });
+  if (enterP > 0) pOpts.dir = 1;
+  const seated = () => person(cx + 64, 1614, Object.assign({}, PASSENGER, { dir: 1 }));
+  car(cx, {
+    doorOpen: door, spin,
+    inside: inside ? seated : null,
+    outside: !inside ? () => {
+      X.save();
+      if (enterP > 0) { // hide the legs below the door sill as she sits down
+        X.beginPath(); X.rect(-W, -H, 3 * W, H + GY + DOOR.bot); X.rect(-W, 0, W + cx + DOOR.x0, 2 * H); X.rect(cx + DOOR.x1, 0, 2 * W, 2 * H); X.clip();
+      }
+      person(px, pf, pOpts); X.restore();
+    } : null,
+  });
+}
+function grade() {
+  let g = X.createRadialGradient(W / 2, H / 2, 400, W / 2, H / 2, 1200);
+  g.addColorStop(0, 'rgba(0,0,0,0)'); g.addColorStop(1, 'rgba(0,0,0,.42)');
+  X.fillStyle = g; X.fillRect(0, 0, W, H);
+  X.fillStyle = 'rgba(255,190,110,.06)'; X.fillRect(0, 0, W, H);
+}
+function render(t) {
+  X.setTransform(1, 0, 0, 1, 0, 0); X.globalAlpha = 1;
+  X.fillStyle = '#000'; X.fillRect(0, 0, W, H);
+  const topA = seg(t, 3.55, 3.85) * (1 - seg(t, 5.5, 5.75));
+  if (topA < 1) {
+    X.save();
+    const after = t >= 5.5;
+    const z = after ? 1.2 : 1.2 + .3 * eio(seg(t, 1.45, 2.2));
+    const shake = t > 3.42 && t < 3.6 ? Math.sin(t * 160) * 4 * (3.6 - t) / .18 : 0;
+    X.translate(560, 1430 + shake); X.scale(z, z); X.translate(-560, -1430);
+    background(); sideScene(t, after);
+    X.restore();
+  }
+  if (topA > 0) { X.save(); X.globalAlpha = topA; topView(t); X.restore(); }
+  grade();
+  const f = Math.min(seg(t, 0, .25), 1 - seg(t, 6.6, 7));
+  if (f < 1) { X.fillStyle = `rgba(0,0,0,${1 - f})`; X.fillRect(0, 0, W, H); }
+}
+window.render = render;
+render(2.7);
+</script></body></html>
